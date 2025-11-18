@@ -1,0 +1,143 @@
+<!-- Widget Calendrier Gîte avec intégration iCal + navigation mois -->
+<div id="gite-calendar-widget" class="calendar-container"></div>
+
+<script>
+// === CONFIGURATION ===
+const icalFeeds = [
+  // "https://www.airbnb.com/calendar/ical/XXXXXX.ics",
+  // "https://www.abritel.fr/icalendar/XXXXXX.ics"
+];
+
+let currentMonth = new Date().getMonth();
+let currentYear = new Date().getFullYear();
+
+async function fetchICS(url) {
+  const res = await fetch(url);
+  return await res.text();
+}
+
+function parseICS(icsText) {
+  const events = [];
+  const lines = icsText.split(/
+?
+/);
+  let currentEvent = null;
+
+  for (const line of lines) {
+    if (line.startsWith("BEGIN:VEVENT")) currentEvent = {};
+    else if (line.startsWith("END:VEVENT")) events.push(currentEvent);
+    else if (currentEvent) {
+      if (line.startsWith("DTSTART")) currentEvent.start = line.split(":")[1];
+      if (line.startsWith("DTEND")) currentEvent.end = line.split(":")[1];
+      if (line.startsWith("SUMMARY")) currentEvent.summary = line.split(":")[1];
+    }
+  }
+  return events;
+}
+
+function applyEventsToCalendar(events) {
+  const cells = document.querySelectorAll(".calendar-day");
+  events.forEach(evt => {
+    const start = new Date(evt.start.substring(0,8));
+    const end = new Date(evt.end.substring(0,8));
+
+    cells.forEach(cell => {
+      const d = new Date(cell.dataset.date);
+      if (d >= start && d < end) {
+        cell.classList.add("booked");
+      }
+    });
+  });
+}
+
+async function renderCalendar() {
+  const container = document.getElementById("gite-calendar-widget");
+
+  const firstDay = new Date(currentYear, currentMonth, 1);
+  const lastDay = new Date(currentYear, currentMonth + 1, 0);
+  const monthName = firstDay.toLocaleString('fr-FR', { month: 'long', year: 'numeric' });
+
+  let html = `
+    <div class="nav">
+      <button id="prev-month">◀</button>
+      <h3>${monthName}</h3>
+      <button id="next-month">▶</button>
+    </div>
+    <div class='calendar-grid'>`;
+
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    html += `<div class='calendar-day' data-date='${dateStr}'>${d}</div>`;
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
+
+  document.getElementById("prev-month").onclick = () => {
+    currentMonth--;
+    if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+    loadICS();
+  };
+
+  document.getElementById("next-month").onclick = () => {
+    currentMonth++;
+    if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+    loadICS();
+  };
+}
+
+async function loadICS() {
+  await renderCalendar();
+  let all = [];
+
+  for (const url of icalFeeds) {
+    try {
+      const ics = await fetchICS(url);
+      all = [...all, ...parseICS(ics)];
+    } catch (e) { console.error(e); }
+  }
+  applyEventsToCalendar(all);
+}
+
+loadICS();
+</script>
+
+<style>
+.calendar-container {
+  max-width: 330px;
+  border: 1px solid #ccc;
+  padding: 10px;
+  border-radius: 10px;
+  font-family: Arial, sans-serif;
+}
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.nav button {
+  background: #eee;
+  border: 1px solid #ccc;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+.calendar-day {
+  padding: 8px;
+  text-align: center;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #f9f9f9;
+}
+.calendar-day.booked {
+  background: #d9534f;
+  color: white;
+  font-weight: bold;
+}
+</style>
